@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f6f74" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'none'; connect-src 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; object-src 'none'; script-src 'self'; style-src 'self'; upgrade-insecure-requests"
+    />
+    <meta
+      name="description"
+      content="Завантажте Зграю з App Store або Google Play."
+    />
+    <title>Завантажити Зграю</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="download-card" aria-labelledby="page-title">
+        <div class="brand" aria-label="Зграя">
+          <img
+            class="app-icon"
+            src="./app-icon.png"
+            width="56"
+            height="56"
+            alt=""
+          />
+          <span class="brand-name">Зграя</span>
+        </div>
+
+        <div class="copy">
+          <h1 id="page-title">Приєднуйтесь до своєї Зграї</h1>
+          <p class="intro">Для завантаження застосунку оберіть магазин для вашого пристрою</p>
+        </div>
+
+        <nav class="store-links" aria-label="Посилання на магазини застосунків">
+          <a
+            class="store-badge-link"
+            data-store-link="apple"
+            aria-disabled="true"
+          >
+            <img
+              class="store-badge store-badge--apple"
+              src="./badges/app-store-en.svg"
+              alt="Завантажити в App Store"
+            />
+          </a>
+
+          <a
+            class="store-badge-link"
+            data-store-link="google"
+            aria-disabled="true"
+          >
+            <img
+              class="store-badge store-badge--google"
+              src="./badges/google-play-en.png"
+              alt="Завантажити з Google Play"
+            />
+          </a>
+        </nav>
+
+        <p class="trademark-credit" lang="en">
+          Apple and the Apple logo are trademarks of Apple Inc., registered in the U.S. and other countries.
+          Google Play and the Google Play logo are trademarks of Google LLC.
+        </p>
+
+        <p id="redirect-status" class="screen-reader-only" aria-live="polite"></p>
+
+        <noscript>
+          <p class="noscript-note">
+            Увімкніть JavaScript, щоб активувати посилання на магазини.
+            <span lang="en">Enable JavaScript to activate the store links.</span>
+          </p>
+        </noscript>
+      </section>
+    </main>
+
+    <script type="module" src="./main.mjs"></script>
+  </body>
+</html>
