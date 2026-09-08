@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -9,6 +10,68 @@ import { STORE_LINKS } from "../site/store-links.mjs";
 
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const siteDirectory = join(testDirectory, "..", "site");
+const repositoryDirectory = join(siteDirectory, "..");
+
+let mainModuleRun = 0;
+
+async function runMainModule({ userAgent = "", platform = "", maxTouchPoints = 0 } = {}) {
+  const anchors = ["apple", "google"].map((store) => ({
+    dataset: { storeLink: store },
+    href: "",
+    removedAttributes: [],
+    removeAttribute(attribute) {
+      this.removedAttributes.push(attribute);
+    },
+  }));
+  const status = { textContent: "unchanged" };
+  const replacements = [];
+
+  const originalGlobals = new Map(
+    ["document", "navigator", "window"].map((name) => [
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    ]),
+  );
+
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      querySelectorAll() {
+        return anchors;
+      },
+      querySelector() {
+        return status;
+      },
+    },
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { userAgent, platform, maxTouchPoints },
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: {
+        replace(destination) {
+          replacements.push(destination);
+        },
+      },
+    },
+  });
+
+  try {
+    await import(`../site/main.mjs?test-run=${mainModuleRun++}`);
+    return { anchors, replacements, status };
+  } finally {
+    for (const [name, descriptor] of originalGlobals) {
+      if (descriptor) {
+        Object.defineProperty(globalThis, name, descriptor);
+      } else {
+        delete globalThis[name];
+      }
+    }
+  }
+}
 
 test("store destinations are immutable external HTTPS URLs", () => {
   assert.deepEqual(Object.keys(STORE_LINKS), ["apple", "google"]);
@@ -119,6 +182,45 @@ test("fallback exposes two accessible links hydrated from the shared config", as
   assert.doesNotMatch(html, /https:\/\/(?:apps\.apple|play\.google)/);
 });
 
+test("main hydrates links and redirects iPhone clients to the App Store", async () => {
+  const { anchors, replacements, status } = await runMainModule({
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+  });
+
+  assert.equal(anchors[0].href, STORE_LINKS.apple);
+  assert.equal(anchors[1].href, STORE_LINKS.google);
+  assert.deepEqual(anchors[0].removedAttributes, ["aria-disabled"]);
+  assert.deepEqual(anchors[1].removedAttributes, ["aria-disabled"]);
+  assert.equal(status.textContent, "Відкриваємо App Store. Opening App Store.");
+  assert.deepEqual(replacements, [STORE_LINKS.apple]);
+});
+
+test("main redirects Android clients to Google Play", async () => {
+  const { anchors, replacements, status } = await runMainModule({
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/128 Mobile Safari/537.36",
+  });
+
+  assert.equal(anchors[0].href, STORE_LINKS.apple);
+  assert.equal(anchors[1].href, STORE_LINKS.google);
+  assert.equal(status.textContent, "Відкриваємо Google Play. Opening Google Play.");
+  assert.deepEqual(replacements, [STORE_LINKS.google]);
+});
+
+test("main keeps desktop clients on the hydrated fallback", async () => {
+  const { anchors, replacements, status } = await runMainModule({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36",
+    platform: "Win32",
+  });
+
+  assert.equal(anchors[0].href, STORE_LINKS.apple);
+  assert.equal(anchors[1].href, STORE_LINKS.google);
+  assert.equal(status.textContent, "unchanged");
+  assert.deepEqual(replacements, []);
+});
+
 test("public artifact contains no analytics, cookies, or browser storage", async () => {
   const publicFiles = [
     "index.html",
@@ -153,4 +255,34 @@ test("official store badge files are shipped without inline reconstructions", as
   assert.deepEqual([...googleBadge.subarray(0, 8)], [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
   ]);
+});
+
+test("official store badge files match the recorded SHA-256 receipts", async () => {
+  const receipts = await readFile(
+    join(repositoryDirectory, "ASSET_SOURCES.md"),
+    "utf8",
+  );
+  const recordedAssets = [
+    ...receipts.matchAll(
+      /- Stored as: `([^`]+)`[\s\S]*?- SHA-256: `([0-9a-f]{64})`/gi,
+    ),
+  ];
+
+  assert.equal(recordedAssets.length, 2);
+
+  for (const [, relativePath, recordedHash] of recordedAssets) {
+    const bytes = await readFile(join(repositoryDirectory, relativePath));
+    const normalizedBytes = relativePath.endsWith(".svg")
+      ? Buffer.from(bytes.toString("utf8").replace(/\r\n?/g, "\n"))
+      : bytes;
+    const actualHash = createHash("sha256")
+      .update(normalizedBytes)
+      .digest("hex");
+
+    assert.equal(
+      actualHash.toUpperCase(),
+      recordedHash.replace(/\s/g, "").toUpperCase(),
+      `SHA-256 mismatch for ${relativePath}`,
+    );
+  }
 });
